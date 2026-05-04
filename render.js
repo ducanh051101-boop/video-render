@@ -116,7 +116,7 @@ const postCallback = async (body) => {
 
     // 5. Burn subtitles into video — Roboto Bold, white with thick black outline
     const final = path.join(WORK_DIR, 'final.mp4');
-    const style = "FontName=Roboto,FontSize=22,Bold=-1,PrimaryColour=&HFFFFFF&,OutlineColour=&H000000&,BorderStyle=1,Outline=4,Shadow=0,Alignment=2,MarginV=80";
+    const style = "FontName=Roboto,FontSize=22,Bold=-1,PrimaryColour=&HFFFFFF&,OutlineColour=&H000000&,BorderStyle=1,Outline=4,Shadow=0,Alignment=2,MarginV=280";
     sh(`ffmpeg -y -i "${merged}" -vf "subtitles=${srt}:force_style='${style}'" -c:a copy "${final}"`);
 
     // 6. Upload to litterbox.catbox.moe (24h public temp host)
