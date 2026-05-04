@@ -1,0 +1,12 @@
+{
+  "name": "video-render",
+  "version": "1.0.0",
+  "description": "Merge n8n-generated scene videos and burn Vietnamese subtitles via OpenAI Whisper",
+  "main": "render.js",
+  "scripts": {
+    "render": "node render.js"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

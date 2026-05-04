@@ -1,0 +1,42 @@
+name: Render Video
+
+on:
+  workflow_dispatch:
+    inputs:
+      video_id:
+        description: 'Mã video (vd VID-20260504-1234)'
+        required: true
+        type: string
+      scenes:
+        description: 'JSON array các scene URL'
+        required: true
+        type: string
+      callback_url:
+        description: 'n8n resume webhook URL'
+        required: true
+        type: string
+
+jobs:
+  render:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install ffmpeg
+        run: |
+          sudo apt-get update -y
+          sudo apt-get install -y ffmpeg
+
+      - name: Run render
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          VIDEO_ID: ${{ inputs.video_id }}
+          SCENES_JSON: ${{ inputs.scenes }}
+          CALLBACK_URL: ${{ inputs.callback_url }}
+        run: node render.js
