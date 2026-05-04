@@ -28,10 +28,11 @@ jobs:
         with:
           node-version: '20'
 
-      - name: Install ffmpeg
+      - name: Install ffmpeg + Roboto font
         run: |
           sudo apt-get update -y
-          sudo apt-get install -y ffmpeg
+          sudo apt-get install -y ffmpeg fonts-roboto fonts-noto-core
+          sudo fc-cache -fv
 
       - name: Run render
         env:

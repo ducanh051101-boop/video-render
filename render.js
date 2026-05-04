@@ -67,22 +67,56 @@ const postCallback = async (body) => {
     const audio = path.join(WORK_DIR, 'audio.mp3');
     sh(`ffmpeg -y -i "${merged}" -vn -ar 16000 -ac 1 -b:a 64k "${audio}"`);
 
-    // 4. Transcribe via OpenAI Whisper -> SRT
+    // 4. Transcribe via OpenAI Whisper -> word-level JSON
+    const audioBuf = fs.readFileSync(audio);
+    const fd = new FormData();
+    fd.append('file', new Blob([audioBuf], { type: 'audio/mpeg' }), 'audio.mp3');
+    fd.append('model', 'whisper-1');
+    fd.append('language', 'vi');
+    fd.append('response_format', 'verbose_json');
+    fd.append('timestamp_granularities[]', 'word');
+    const wRes = await fetch('https://api.openai.com/v1/audio/transcriptions', {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${OPENAI_KEY}` },
+      body: fd
+    });
+    if (!wRes.ok) {
+      throw new Error(`Whisper failed ${wRes.status}: ${await wRes.text()}`);
+    }
+    const wData = await wRes.json();
+    const words = wData.words || [];
+    console.log(`Whisper: ${words.length} words`);
+
+    // Build SRT with max WORDS_PER_CUE words per line, UPPERCASE for Reels-style
+    const WORDS_PER_CUE = 3;
+    const fmtTime = (s) => {
+      const h = Math.floor(s / 3600);
+      const m = Math.floor((s % 3600) / 60);
+      const sec = Math.floor(s % 60);
+      const ms = Math.round((s - Math.floor(s)) * 1000);
+      return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:${String(sec).padStart(2, '0')},${String(ms).padStart(3, '0')}`;
+    };
+    const cues = [];
+    for (let i = 0; i < words.length; i += WORDS_PER_CUE) {
+      const chunk = words.slice(i, i + WORDS_PER_CUE);
+      cues.push({
+        start: chunk[0].start,
+        end: chunk[chunk.length - 1].end,
+        text: chunk.map(w => String(w.word).trim()).join(' ').toUpperCase()
+      });
+    }
     const srt = path.join(WORK_DIR, 'subs.srt');
-    sh(`curl -sS -f https://api.openai.com/v1/audio/transcriptions \
-      -H "Authorization: Bearer ${OPENAI_KEY}" \
-      -F file=@"${audio}" \
-      -F model=whisper-1 \
-      -F language=vi \
-      -F response_format=srt \
-      -o "${srt}"`);
+    const srtContent = cues
+      .map((c, i) => `${i + 1}\n${fmtTime(c.start)} --> ${fmtTime(c.end)}\n${c.text}\n`)
+      .join('\n');
+    fs.writeFileSync(srt, srtContent);
     console.log('--- SRT preview ---');
-    console.log(fs.readFileSync(srt, 'utf8').slice(0, 500));
+    console.log(srtContent.slice(0, 500));
     console.log('-------------------');
 
-    // 5. Burn subtitles into video
+    // 5. Burn subtitles into video — Roboto Bold, white with thick black outline
     const final = path.join(WORK_DIR, 'final.mp4');
-    const style = "FontName=Arial,FontSize=14,PrimaryColour=&HFFFFFF&,OutlineColour=&H000000&,BorderStyle=1,Outline=2,Shadow=0,Alignment=2,MarginV=40";
+    const style = "FontName=Roboto,FontSize=22,Bold=-1,PrimaryColour=&HFFFFFF&,OutlineColour=&H000000&,BorderStyle=1,Outline=4,Shadow=0,Alignment=2,MarginV=80";
     sh(`ffmpeg -y -i "${merged}" -vf "subtitles=${srt}:force_style='${style}'" -c:a copy "${final}"`);
 
     // 6. Upload to litterbox.catbox.moe (24h public temp host)
