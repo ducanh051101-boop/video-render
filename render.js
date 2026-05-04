@@ -87,37 +87,60 @@ const postCallback = async (body) => {
     const words = wData.words || [];
     console.log(`Whisper: ${words.length} words`);
 
-    // Build SRT with max WORDS_PER_CUE words per line, UPPERCASE for Reels-style
+    // Build ASS with karaoke-style word-by-word highlight (yellow on current word)
     const WORDS_PER_CUE = 3;
-    const fmtTime = (s) => {
+    const COLOR_HIGHLIGHT = '&H0000FFFF&'; // vàng — ASS dùng &HBBGGRR
+    const COLOR_DEFAULT = '&H00FFFFFF&';   // trắng
+
+    const fmtAssTime = (s) => {
       const h = Math.floor(s / 3600);
       const m = Math.floor((s % 3600) / 60);
       const sec = Math.floor(s % 60);
-      const ms = Math.round((s - Math.floor(s)) * 1000);
-      return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:${String(sec).padStart(2, '0')},${String(ms).padStart(3, '0')}`;
+      const cs = Math.round((s - Math.floor(s)) * 100);
+      return `${h}:${String(m).padStart(2, '0')}:${String(sec).padStart(2, '0')}.${String(cs).padStart(2, '0')}`;
     };
-    const cues = [];
+
+    const dialogues = [];
     for (let i = 0; i < words.length; i += WORDS_PER_CUE) {
       const chunk = words.slice(i, i + WORDS_PER_CUE);
-      cues.push({
-        start: chunk[0].start,
-        end: chunk[chunk.length - 1].end,
-        text: chunk.map(w => String(w.word).trim()).join(' ').toUpperCase()
-      });
+      const chunkEnd = chunk[chunk.length - 1].end;
+      for (let j = 0; j < chunk.length; j++) {
+        const wStart = chunk[j].start;
+        const wEnd = j === chunk.length - 1 ? chunkEnd : chunk[j + 1].start;
+        const text = chunk.map((w, k) => {
+          const up = String(w.word).trim().toUpperCase();
+          return k === j
+            ? `{\\1c${COLOR_HIGHLIGHT}}${up}{\\1c${COLOR_DEFAULT}}`
+            : up;
+        }).join(' ');
+        dialogues.push(`Dialogue: 0,${fmtAssTime(wStart)},${fmtAssTime(wEnd)},Default,,0,0,0,,${text}`);
+      }
     }
-    const srt = path.join(WORK_DIR, 'subs.srt');
-    const srtContent = cues
-      .map((c, i) => `${i + 1}\n${fmtTime(c.start)} --> ${fmtTime(c.end)}\n${c.text}\n`)
-      .join('\n');
-    fs.writeFileSync(srt, srtContent);
-    console.log('--- SRT preview ---');
-    console.log(srtContent.slice(0, 500));
+
+    const assContent = `[Script Info]
+ScriptType: v4.00+
+PlayResX: 720
+PlayResY: 1280
+WrapStyle: 0
+ScaledBorderAndShadow: yes
+
+[V4+ Styles]
+Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
+Style: Default,Roboto,22,&H00FFFFFF,&H000000FF,&H00000000,&H00000000,-1,0,0,0,100,100,0,0,1,4,0,2,20,20,280,1
+
+[Events]
+Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
+${dialogues.join('\n')}
+`;
+    const ass = path.join(WORK_DIR, 'subs.ass');
+    fs.writeFileSync(ass, assContent);
+    console.log('--- ASS preview ---');
+    console.log(assContent.slice(0, 1000));
     console.log('-------------------');
 
-    // 5. Burn subtitles into video — Roboto Bold, white with thick black outline
+    // 5. Burn subtitles into video
     const final = path.join(WORK_DIR, 'final.mp4');
-    const style = "FontName=Roboto,FontSize=22,Bold=-1,PrimaryColour=&HFFFFFF&,OutlineColour=&H000000&,BorderStyle=1,Outline=4,Shadow=0,Alignment=2,MarginV=280";
-    sh(`ffmpeg -y -i "${merged}" -vf "subtitles=${srt}:force_style='${style}'" -c:a copy "${final}"`);
+    sh(`ffmpeg -y -i "${merged}" -vf "ass=${ass}" -c:a copy "${final}"`);
 
     // 6. Upload to litterbox.catbox.moe (24h public temp host)
     const uploadOut = shCapture(
