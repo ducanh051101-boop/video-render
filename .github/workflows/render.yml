@@ -31,7 +31,7 @@ jobs:
       - name: Setup ffmpeg (static binary)
         uses: FedericoCarboni/setup-ffmpeg@v3
         with:
-          ffmpeg-version: '7.1'
+          ffmpeg-version: 'release'
 
       - name: Run render
         env:
