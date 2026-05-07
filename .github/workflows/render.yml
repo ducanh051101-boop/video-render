@@ -28,14 +28,10 @@ jobs:
         with:
           node-version: '20'
 
-      - name: Cache APT packages
-        uses: awalsh128/cache-apt-pkgs-action@latest
+      - name: Setup ffmpeg (static binary)
+        uses: FedericoCarboni/setup-ffmpeg@v3
         with:
-          packages: ffmpeg fonts-roboto fonts-noto-core
-          version: 1.0
-
-      - name: Refresh font cache
-        run: sudo fc-cache -fv
+          ffmpeg-version: '7.1'
 
       - name: Run render
         env:
