@@ -61,7 +61,7 @@ const postCallback = async (body) => {
     const concatList = path.join(WORK_DIR, 'concat.txt');
     fs.writeFileSync(concatList, scenePaths.map(p => `file '${p}'`).join('\n'));
     const merged = path.join(WORK_DIR, 'merged.mp4');
-    sh(`ffmpeg -y -f concat -safe 0 -i "${concatList}" -c:v libx264 -preset veryfast -crf 22 -c:a aac -b:a 128k "${merged}"`);
+    sh(`ffmpeg -y -f concat -safe 0 -i "${concatList}" -c:v libx264 -preset ultrafast -crf 23 -c:a aac -b:a 128k "${merged}"`);
 
     // 3. Extract audio for transcription
     const audio = path.join(WORK_DIR, 'audio.mp3');
@@ -140,17 +140,17 @@ ${dialogues.join('\n')}
 
     // 5. Burn subtitles into video
     const final = path.join(WORK_DIR, 'final.mp4');
-    sh(`ffmpeg -y -i "${merged}" -vf "ass=${ass}" -c:a copy "${final}"`);
+    sh(`ffmpeg -y -i "${merged}" -vf "ass=${ass}" -preset ultrafast -crf 23 -c:a copy "${final}"`);
 
-    // 6. Upload to public temp host with retry (litterbox primary, catbox fallback)
+    // 6. Upload to public temp host with retry (catbox primary, litterbox fallback)
     const uploadHosts = [
-      { name: 'litterbox', cmd: `curl -sS --max-time 120 -F "reqtype=fileupload" -F "time=24h" -F "fileToUpload=@${final}" https://litterbox.catbox.moe/resources/internals/api.php` },
-      { name: 'catbox', cmd: `curl -sS --max-time 120 -F "reqtype=fileupload" -F "fileToUpload=@${final}" https://catbox.moe/user/api.php` },
+      { name: 'catbox', cmd: `curl -sS --max-time 90 -F "reqtype=fileupload" -F "fileToUpload=@${final}" https://catbox.moe/user/api.php` },
+      { name: 'litterbox', cmd: `curl -sS --max-time 90 -F "reqtype=fileupload" -F "time=24h" -F "fileToUpload=@${final}" https://litterbox.catbox.moe/resources/internals/api.php` },
     ];
     let finalUrl = null;
     let lastErr = null;
     for (const host of uploadHosts) {
-      for (let attempt = 1; attempt <= 3; attempt++) {
+      for (let attempt = 1; attempt <= 2; attempt++) {
         try {
           console.log(`Upload to ${host.name} attempt ${attempt}...`);
           const out = shCapture(host.cmd);
@@ -165,7 +165,7 @@ ${dialogues.join('\n')}
           lastErr = `${host.name} attempt ${attempt} failed: ${e.message}`;
           console.log(lastErr);
         }
-        if (!finalUrl && attempt < 3) await new Promise(r => setTimeout(r, 5000));
+        if (!finalUrl && attempt < 2) await new Promise(r => setTimeout(r, 3000));
       }
       if (finalUrl) break;
     }
