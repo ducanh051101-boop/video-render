@@ -40,3 +40,10 @@ jobs:
           SCENES_JSON: ${{ inputs.scenes }}
           CALLBACK_URL: ${{ inputs.callback_url }}
         run: node render.js
+
+      - name: Notify n8n on cancel/failure
+        if: cancelled() || failure()
+        run: |
+          curl -sS -X POST "${{ inputs.callback_url }}" \
+            -H "Content-Type: application/json" \
+            -d "{\"video_id\":\"${{ inputs.video_id }}\",\"status\":\"error\",\"error\":\"GitHub Actions job ${{ job.status }} (timeout/cancel/fail)\"}"
