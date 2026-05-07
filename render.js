@@ -142,15 +142,36 @@ ${dialogues.join('\n')}
     const final = path.join(WORK_DIR, 'final.mp4');
     sh(`ffmpeg -y -i "${merged}" -vf "ass=${ass}" -c:a copy "${final}"`);
 
-    // 6. Upload to litterbox.catbox.moe (24h public temp host)
-    const uploadOut = shCapture(
-      `curl -sS -f -F "reqtype=fileupload" -F "time=24h" -F "fileToUpload=@${final}" https://litterbox.catbox.moe/resources/internals/api.php`
-    );
-    if (!uploadOut.startsWith('http')) {
-      throw new Error('Upload to litterbox failed: ' + uploadOut);
+    // 6. Upload to public temp host with retry (litterbox primary, catbox fallback)
+    const uploadHosts = [
+      { name: 'litterbox', cmd: `curl -sS --max-time 120 -F "reqtype=fileupload" -F "time=24h" -F "fileToUpload=@${final}" https://litterbox.catbox.moe/resources/internals/api.php` },
+      { name: 'catbox', cmd: `curl -sS --max-time 120 -F "reqtype=fileupload" -F "fileToUpload=@${final}" https://catbox.moe/user/api.php` },
+    ];
+    let finalUrl = null;
+    let lastErr = null;
+    for (const host of uploadHosts) {
+      for (let attempt = 1; attempt <= 3; attempt++) {
+        try {
+          console.log(`Upload to ${host.name} attempt ${attempt}...`);
+          const out = shCapture(host.cmd);
+          if (out && /^https?:\/\//.test(out.trim())) {
+            finalUrl = out.trim();
+            console.log(`Uploaded to ${host.name}:`, finalUrl);
+            break;
+          }
+          lastErr = `${host.name} returned non-URL: ${out.slice(0, 200)}`;
+          console.log(`Bad response: ${lastErr}`);
+        } catch (e) {
+          lastErr = `${host.name} attempt ${attempt} failed: ${e.message}`;
+          console.log(lastErr);
+        }
+        if (!finalUrl && attempt < 3) await new Promise(r => setTimeout(r, 5000));
+      }
+      if (finalUrl) break;
     }
-    const finalUrl = uploadOut;
-    console.log('Uploaded ->', finalUrl);
+    if (!finalUrl) {
+      throw new Error('All upload hosts failed. Last error: ' + lastErr);
+    }
 
     // 7. Callback to n8n with success
     await postCallback({
