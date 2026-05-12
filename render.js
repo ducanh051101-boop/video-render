@@ -63,14 +63,14 @@ const postCallback = async (body) => {
     const merged = path.join(WORK_DIR, 'merged.mp4');
     sh(`ffmpeg -y -f concat -safe 0 -i "${concatList}" -c:v libx264 -preset ultrafast -crf 23 -c:a aac -b:a 128k "${merged}"`);
 
-    // 3. Extract audio for transcription
-    const audio = path.join(WORK_DIR, 'audio.mp3');
-    sh(`ffmpeg -y -i "${merged}" -vn -ar 16000 -ac 1 -b:a 64k "${audio}"`);
+    // 3. Extract audio for transcription (copy codec preserves exact timing → subtitle sync)
+    const audio = path.join(WORK_DIR, 'audio.m4a');
+    sh(`ffmpeg -y -i "${merged}" -vn -c:a copy "${audio}"`);
 
     // 4. Transcribe via OpenAI Whisper -> word-level JSON
     const audioBuf = fs.readFileSync(audio);
     const fd = new FormData();
-    fd.append('file', new Blob([audioBuf], { type: 'audio/mpeg' }), 'audio.mp3');
+    fd.append('file', new Blob([audioBuf], { type: 'audio/mp4' }), 'audio.m4a');
     fd.append('model', 'whisper-1');
     fd.append('language', 'vi');
     fd.append('response_format', 'verbose_json');
