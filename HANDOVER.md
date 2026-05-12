@@ -8,14 +8,28 @@ Workflow tự động: scrape FB video → AI prompt generation → Max Studio i
 |---|---|---|
 | **Google Sheet** | Quản lý input/output, prompts, logs | Google Workspace |
 | **Google Drive** | Lưu video output | Google Workspace |
-| **n8n** | Orchestration (4 workflows) | Self-host VPS hoặc n8n.cloud |
+| **n8n** | Orchestration (8 workflows) | Self-host VPS hoặc n8n.cloud |
 | **GitHub repo (Public)** | CI runner cho ffmpeg render | GitHub free |
 | **OpenAI API** | Whisper transcribe + AI Agent | OpenAI |
 | **Gemini API** | Analyze video (qua n8n LangChain) | Google AI Studio |
 | **Apify** | Scrape Facebook video | Apify |
 | **Max Studio** | Generate image (Nano_Banana_Pro) + video (Veo_3.1-Fast) | max-studio.store |
-| **Zalo** | Notification (optional) | Zalo Bot Tools |
+| **Telegram Bot** | Control workflow + push notification | BotFather |
+| **Zalo** | Notification cho workflow khác (không phải video AI) | Zalo Bot Tools |
 | **catbox.moe** | Public temp host cho video render output | Free, no account |
+
+## 🤖 8 Workflows trong n8n
+
+| # | Workflow | Vai trò |
+|---|---|---|
+| 1 | **AI Prompt Generator → Sheet** | Sub-workflow chính: Apify → Gemini → AI Agent → Max Studio → Trigger render |
+| 2 | **Video Batch Dispatcher** | Cron 1 phút, pick rows `Tạo Prompt` (max 3 parallel + cooldown 2 phút) |
+| 3 | **Render Callback Handler** | Webhook nhận callback GitHub Actions → upload Drive → push Telegram |
+| 4 | **Error Trigger** | Global error: video AI → Telegram, khác → Zalo |
+| 5 | **Stuck Row Sweeper** | Cron 10 phút: mark rows stuck > 30 phút thành Lỗi |
+| 6 | **Telegram Bot Controller** | Bot xử lý `/submit`, `/status`, `/retry`, `/regen`, `/cancel`, `/delete`, `/list`, `/stats`, `/help` + inline keyboard |
+| 7 | **Daily Summary Push** | Cron 22:00 VN: báo cáo ngày qua Telegram |
+| 8 | **Telegram Bot Health Monitor** | Cron 5 phút: check Telegram webhook, alert Zalo nếu bot chết |
 
 ---
 
@@ -37,7 +51,8 @@ Workflow tự động: scrape FB video → AI prompt generation → Max Studio i
 ### Optional
 
 7. **Gemini API** — https://aistudio.google.com (free tier OK)
-8. **Zalo Bot** — n8n-nodes-zalo-tools, chỉ cho thông báo
+8. **Zalo Bot** — n8n-nodes-zalo-tools (thông báo cho workflow ngoài video AI)
+9. **Telegram Bot** — @BotFather → /newbot → Bot Token; lấy Chat ID qua @userinfobot
 
 ---
 
@@ -53,7 +68,7 @@ Workflow tự động: scrape FB video → AI prompt generation → Max Studio i
 
 Tạo Spreadsheet mới tên "AI Prompts - Viral Video Clones" với 2 tab:
 
-**Tab `Source` - 9 cột:**
+**Tab `Source` - 10 cột:**
 | Col | Header |
 |---|---|
 | A | Tên video |
@@ -65,6 +80,7 @@ Tạo Spreadsheet mới tên "AI Prompts - Viral Video Clones" với 2 tab:
 | G | Video Hoàn Thiện |
 | H | Lỗi |
 | I | Execution ID |
+| J | Credits Used |
 
 **Tab `Prompts` - 11 cột:**
 | Col | Header |
@@ -103,13 +119,16 @@ Tạo Spreadsheet mới tên "AI Prompts - Viral Video Clones" với 2 tab:
 
 Người cũ (chủ hiện tại) làm:
 - Vào n8n, mở từng workflow → menu `⋯` → **Download**
-- 4 file JSON cần export:
+- 8 file JSON cần export:
   - `AI Prompt Generator -> Sheet.json`
   - `Video Batch Dispatcher.json`
   - `Render Callback Handler.json`
   - `Error Trigger.json`
   - `Stuck Row Sweeper.json`
-- Gửi 5 file cho người mới
+  - `Telegram Bot - Video AI Controller.json`
+  - `Daily Summary Push.json`
+  - `Telegram Bot Health Monitor.json`
+- Gửi 8 file cho người mới
 
 ### Bước 6: Import workflows vào n8n mới (người mới)
 
@@ -127,6 +146,7 @@ Vào menu **Credentials** → tạo từng cái:
 | Apify API | Header Auth | Name=`Authorization`, Value=`Bearer <APIFY_TOKEN>` |
 | Max Studio API | Header Auth | Name=`X-API-Key`, Value=`<MAX_STUDIO_KEY>` |
 | GitHub PAT | Header Auth | Name=`Authorization`, Value=`Bearer <GITHUB_PAT>` |
+| Telegram Bot | Telegram API | Access Token từ @BotFather (vd `8797508063:AAGZ...`) |
 | OpenAI | OpenAI API | API key OpenAI |
 | Gemini (Google AI) | Google Gemini (PaLM) API | API key |
 | Zalo | Zalo API (community node) | Bot token |
@@ -161,6 +181,25 @@ Sau import, các node có ID cũ. Phải update:
 #### Trong `Stuck Row Sweeper`:
 - **Read Source, Mark Stuck As Error**: sửa Sheet ID + credential
 
+#### Trong `Telegram Bot - Video AI Controller`:
+- **Parse Command** Code: sửa mảng `ALLOWED = [8665491883]` thành Chat ID của bạn (từ @userinfobot)
+- **Tất cả Sheet nodes**: sửa Spreadsheet ID
+- **Tất cả Telegram nodes**: chọn credential Telegram mới
+- **Send Submit Error/Refused/...**: chatId dùng `={{ $json.chatId }}` (không sửa)
+
+#### Trong `Daily Summary Push`:
+- **Calculate Summary** Code: sửa `chatId: 8665491883` thành Chat ID của bạn
+- **Read Source**: sửa Sheet ID + credential
+- **Send Summary**: credential Telegram mới
+
+#### Trong `Telegram Bot Health Monitor`:
+- **Check Telegram Webhook** URL: thay bot token cũ (`8797508063:AAG...`) bằng token mới
+- **Evaluate Health**: không cần sửa
+- **Zalo Bot Down Alert**: credential Zalo mới + threadId
+
+#### Trong `Error Trigger` → `IF Video AI Workflow`:
+- Sửa mảng `['atKyen8rDb6opEzh', ...]` thành 5 workflow ID video AI mới (sau khi import)
+
 ### Bước 9: Update render.js cho repo mới
 
 - Mở `render.js` → tìm `litterbox.catbox.moe` (default OK, không cần đổi)
@@ -182,7 +221,15 @@ Active từng workflow theo thứ tự:
 2. Stuck Row Sweeper
 3. Render Callback Handler
 4. AI Prompt Generator -> Sheet
-5. Video Batch Dispatcher (cuối cùng)
+5. Telegram Bot Controller
+6. Daily Summary Push
+7. Telegram Bot Health Monitor
+8. Video Batch Dispatcher (cuối cùng)
+
+**Lưu ý Telegram Bot**:
+- Sau khi active, n8n tự setWebhook với URL `/webhook/<workflowId>/telegramtrigger/webhook`
+- Verify: `curl https://api.telegram.org/bot<TOKEN>/getWebhookInfo` → URL không được có space hoặc `last_error`
+- Gửi `/help` từ Telegram → bot phải reply menu trong 5s
 
 ### Bước 12: Test smoke
 
