@@ -57,11 +57,17 @@ const postCallback = async (body) => {
       scenePaths.push(dest);
     }
 
-    // 2. Concat all scenes (re-encode to ensure consistent codec/resolution)
+    // 2. Concat all scenes — try copy first (no re-encode, ~30s faster), fallback to re-encode if codec mismatch
     const concatList = path.join(WORK_DIR, 'concat.txt');
     fs.writeFileSync(concatList, scenePaths.map(p => `file '${p}'`).join('\n'));
     const merged = path.join(WORK_DIR, 'merged.mp4');
-    sh(`ffmpeg -y -f concat -safe 0 -i "${concatList}" -c:v libx264 -preset ultrafast -crf 23 -c:a aac -b:a 128k "${merged}"`);
+    try {
+      sh(`ffmpeg -y -f concat -safe 0 -i "${concatList}" -c copy "${merged}"`);
+      console.log('Concat with -c copy succeeded');
+    } catch (e) {
+      console.log('Copy concat failed, falling back to re-encode');
+      sh(`ffmpeg -y -f concat -safe 0 -i "${concatList}" -c:v libx264 -preset ultrafast -crf 23 -c:a aac -b:a 128k "${merged}"`);
+    }
 
     // 3. Extract audio for transcription (copy codec preserves exact timing → subtitle sync)
     const audio = path.join(WORK_DIR, 'audio.m4a');

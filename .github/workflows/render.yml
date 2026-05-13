@@ -28,10 +28,25 @@ jobs:
         with:
           node-version: '20'
 
+      - name: Cache ffmpeg binary
+        id: cache-ffmpeg
+        uses: actions/cache@v4
+        with:
+          path: /opt/hostedtoolcache/ffmpeg
+          key: ffmpeg-static-release-v1
+
       - name: Setup ffmpeg (static binary)
+        if: steps.cache-ffmpeg.outputs.cache-hit != 'true'
         uses: FedericoCarboni/setup-ffmpeg@v3
         with:
           ffmpeg-version: 'release'
+
+      - name: Add cached ffmpeg to PATH
+        if: steps.cache-ffmpeg.outputs.cache-hit == 'true'
+        run: |
+          FFMPEG_DIR=$(find /opt/hostedtoolcache/ffmpeg -name 'ffmpeg' -type f -executable | head -1 | xargs dirname)
+          echo "$FFMPEG_DIR" >> $GITHUB_PATH
+          ffmpeg -version || echo "Cache hit but binary not found, will fail"
 
       - name: Run render
         env:
